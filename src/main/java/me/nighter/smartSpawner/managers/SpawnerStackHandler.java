@@ -3,12 +3,15 @@ package me.nighter.smartSpawner.managers;
 import me.nighter.smartSpawner.SmartSpawner;
 import me.nighter.smartSpawner.utils.SpawnerData;
 import org.bukkit.*;
+import org.bukkit.block.CreatureSpawner;
+import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.BlockStateMeta;
+import org.bukkit.inventory.meta.ItemMeta;
 
 public class SpawnerStackHandler {
     private final SmartSpawner plugin;
-    private final int maxStackSize;
     private ConfigManager configManager;
     private LanguageManager languageManager;
 
@@ -16,7 +19,6 @@ public class SpawnerStackHandler {
         this.plugin = plugin;
         this.configManager = plugin.getConfigManager();
         this.languageManager = plugin.getLanguageManager();
-        this.maxStackSize = configManager.getMaxStackSize();
     }
 
     public boolean handleSpawnerStack(Player player, SpawnerData targetSpawner, ItemStack itemInHand, boolean stackAll) {
@@ -29,6 +31,40 @@ public class SpawnerStackHandler {
             return false;
         }
 
+        // Check spawner type from item in hand
+        ItemMeta meta = itemInHand.getItemMeta();
+        if (!(meta instanceof BlockStateMeta)) {
+            languageManager.sendMessage(player, "messages.invalid-spawner");
+            return false;
+        }
+
+        BlockStateMeta blockMeta = (BlockStateMeta) meta;
+        CreatureSpawner handSpawner = (CreatureSpawner) blockMeta.getBlockState();
+        EntityType handEntityType = handSpawner.getSpawnedType();
+
+        // Get target spawner's entity type
+        EntityType targetEntityType = targetSpawner.getEntityType();
+
+        // Support for stacking spawners with Spawner from EconomyShopGUI
+        if (handEntityType == null) {
+            String displayName = meta.getDisplayName();
+            if (displayName.matches("§9§l[A-Za-z]+(?: [A-Za-z]+)? §rSpawner")) {
+                String entityName = displayName
+                        .replaceAll("§9§l", "")
+                        .replaceAll(" §rSpawner", "")
+                        .replace(" ", "_")
+                        .toUpperCase();
+                handEntityType = EntityType.valueOf(entityName.toUpperCase());
+            }
+        }
+
+        // Check if two spawners are the same type
+        if (handEntityType != targetEntityType) {
+            languageManager.sendMessage(player, "messages.different-type");
+            return false;
+        }
+
+        int maxStackSize = configManager.getMaxStackSize();
         int currentStack = targetSpawner.getStackSize();
         if (currentStack >= maxStackSize) {
             languageManager.sendMessage(player, "messages.stack-full");

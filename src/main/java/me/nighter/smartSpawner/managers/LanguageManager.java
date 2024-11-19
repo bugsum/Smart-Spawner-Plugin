@@ -90,6 +90,23 @@ public class LanguageManager {
         put("messages.entity-spawner-placed.type", "CHAT");
         put("messages.entity-spawner-placed.sound", "block.note_block.pling");
 
+        // Selling Items from Spawner
+        put("messages.sell-all.message", "&#d6e7edYou sold a total of &#3287A9%amount% items&#d6e7ed for&a %price%$ &#d6e7ed!");
+        put("messages.sell-all.prefix", "true");
+        put("messages.sell-all.type", "CHAT");
+        put("messages.sell-all.sound", "block.note_block.bell");
+
+        put("messages.no-items.message", "&cThere are no items to sell in the spawner.");
+        put("messages.no-items.prefix", "true");
+        put("messages.no-items.type", "CHAT");
+        put("messages.no-items.sound", "block.note_block.pling");
+
+        put("messages.no-sellable-items.message", "&cNo items can be sold from this spawner.");
+        put("messages.no-sellable-items.prefix", "true");
+        put("messages.no-sellable-items.type", "CHAT");
+        put("messages.no-sellable-items.sound", "block.note_block.pling");
+
+
         // Spawner Stacking/Unstacking Messages
         put("messages.hand-stack.message", "&#00E689Successfully stacked &6%amount%&#00E689 spawners!");
         put("messages.hand-stack.prefix", "false");
@@ -110,6 +127,27 @@ public class LanguageManager {
         put("messages.stack-full.prefix", "true");
         put("messages.stack-full.type", "CHAT");
         put("messages.stack-full.sound", "block.note_block.pling");
+
+        put("messages.invalid-spawner.message", "&cInvalid spawner type!");
+        put("messages.invalid-spawner.prefix", "true");
+        put("messages.invalid-spawner.type", "CHAT");
+        put("messages.invalid-spawner.sound", "block.note_block.pling");
+
+        put("messages.different-type.message", "&cYou can only stack spawners of the same type!");
+        put("messages.different-type.prefix", "true");
+        put("messages.different-type.type", "CHAT");
+        put("messages.different-type.sound", "block.note_block.pling");
+
+        put("messages.hopper-paused.message", "&cHopper has been paused while interacting with the spawner!");
+        put("messages.hopper-paused.prefix", "true");
+        put("messages.hopper-paused.type", "CHAT");
+        put("messages.hopper-paused.sound", "block.note_block.pling");
+
+        put("messages.hopper-resumed.message", "&aHopper has been resumed!");
+        put("messages.hopper-resumed.prefix", "true");
+        put("messages.hopper-resumed.type", "CHAT");
+        put("messages.hopper-resumed.sound", "block.note_block.chime");
+
 
         // GUI Titles
         put("gui-title.menu", "%entity% Spawner");
@@ -155,6 +193,10 @@ public class LanguageManager {
         // Page Indicator
         put("page-indicator.name", "&#f4d842Page %current_page%/&#f4d842%total_pages%");
         put("page-indicator.lore", "&#f4d842Total slots: %total_slots%");
+
+        // Shop Page Indicator
+        put("shop-page-indicator.name", "&#ffd700Page [%current_page%/&#ffd700%total_pages%]");
+        put("shop-page-indicator.lore", "\n&8▪ &#ffd700Total Items: &f%current_items%&7/&f%max_slots%\n&8▪ &#ffd700Storage: &a%percent_storage%&a%&f full\n\n&#ffd700➜ &7Click to sell all items in storage");
 
         // Other GUI Buttons
         put("return-button.name", "&#ff6b6b Return to Main Menu");

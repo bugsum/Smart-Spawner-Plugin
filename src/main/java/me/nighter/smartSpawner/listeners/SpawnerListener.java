@@ -2,10 +2,7 @@ package me.nighter.smartSpawner.listeners;
 
 import me.nighter.smartSpawner.*;
 import me.nighter.smartSpawner.managers.*;
-import me.nighter.smartSpawner.utils.PagedSpawnerLootHolder;
-import me.nighter.smartSpawner.utils.SpawnerData;
-import me.nighter.smartSpawner.utils.SpawnerMenuHolder;
-import me.nighter.smartSpawner.utils.VirtualInventory;
+import me.nighter.smartSpawner.utils.*;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.CreatureSpawner;
@@ -21,7 +18,9 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.*;
+import org.bukkit.inventory.meta.BlockStateMeta;
 import org.bukkit.inventory.meta.ItemMeta;
+import me.nighter.smartSpawner.utils.SpawnerStackerHolder;
 import org.geysermc.floodgate.api.FloodgateApi;
 
 import java.util.UUID;
@@ -33,15 +32,6 @@ public class SpawnerListener implements Listener {
     private final LanguageManager languageManager;
     private final SpawnerManager spawnerManager;
     private final SpawnerStackHandler stackHandler;
-    private static final Set<Material> VALID_MATERIALS = EnumSet.of(
-            Material.PLAYER_HEAD,
-            Material.SPAWNER,
-            Material.ZOMBIE_HEAD,
-            Material.SKELETON_SKULL,
-            Material.WITHER_SKELETON_SKULL,
-            Material.CREEPER_HEAD,
-            Material.PIGLIN_HEAD
-    );
 
     public SpawnerListener(SmartSpawner plugin) {
         this.plugin = plugin;
@@ -65,7 +55,7 @@ public class SpawnerListener implements Listener {
     }
 
     // Helper method to create new spawner
-    public SpawnerData createNewSpawner(Block block, Player player) {
+    private SpawnerData createNewSpawner(Block block, Player player) {
         String newSpawnerId = UUID.randomUUID().toString().substring(0, 8);
         CreatureSpawner creatureSpawner = (CreatureSpawner) block.getState();
         EntityType entityType = creatureSpawner.getSpawnedType();
@@ -75,7 +65,6 @@ public class SpawnerListener implements Listener {
             entityType = configManager.getDefaultEntityType();
         }
 
-        // The else condition was just a duplicate code & was doing nothing extra, simplified it removing it.
         creatureSpawner.setSpawnedType(entityType);
         creatureSpawner.update();
         Location loc = block.getLocation();
@@ -289,22 +278,12 @@ public class SpawnerListener implements Listener {
 
             case PLAYER_HEAD, SPAWNER, ZOMBIE_HEAD, SKELETON_SKULL, WITHER_SKELETON_SKULL, CREEPER_HEAD, PIGLIN_HEAD:
                 player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1.0f, 1.0f);
-                if(event.getView().getTitle().equals(languageManager.getGuiTitle("gui-title.stacker-menu"))){
-                    openSpawnerMenu(player, spawner, true);
-                    break;
-                } else {
-                    handleSpawnerInfoClick(player, spawner);
-                    break;
-                }
+                handleSpawnerInfoClick(player, spawner);
+                break;
             case EXPERIENCE_BOTTLE:
                 handleExpBottleClick(player, spawner);
                 break;
         }
-
-        // Update the GUI with a slight delay to ensure all inventory changes are processed
-//        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-//            openSpawnerMenu(player, spawner, true);
-//        }, 20L);
     }
 
     // Helper method to create buttons
@@ -322,7 +301,7 @@ public class SpawnerListener implements Listener {
     private void handleSpawnerInfoClick(Player player, SpawnerData spawner) {
         // Create new inventory with 27 slots
         String title = languageManager.getMessage("gui-title.stacker-menu");
-        Inventory gui = Bukkit.createInventory(new SpawnerMenuHolder(spawner), 27, title);
+        Inventory gui = Bukkit.createInventory(new SpawnerStackerHolder(spawner), 27, title);
 
         // Create decrease buttons
         ItemStack decreaseBy64 = createButton(Material.RED_STAINED_GLASS_PANE,
@@ -398,19 +377,19 @@ public class SpawnerListener implements Listener {
     @EventHandler
     public void onStackControlClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player)) return;
-        if (!(event.getInventory().getHolder() instanceof SpawnerMenuHolder)) return;
+        if (!(event.getInventory().getHolder() instanceof SpawnerStackerHolder)) return;
 
         event.setCancelled(true);
         Player player = (Player) event.getWhoClicked();
 
-        SpawnerMenuHolder holder = (SpawnerMenuHolder) event.getInventory().getHolder();
+        SpawnerStackerHolder holder = (SpawnerStackerHolder) event.getInventory().getHolder();
         SpawnerData spawner = holder.getSpawnerData();
 
         ItemStack clicked = event.getCurrentItem();
         if (clicked == null || !clicked.hasItemMeta()) return;
 
         // Return to main menu if spawner is clicked
-        if (VALID_MATERIALS.contains(clicked.getType())) {
+        if (clicked.getType() == Material.SPAWNER) {
             openSpawnerMenu(player, spawner, true);
             return;
         }
@@ -425,10 +404,6 @@ public class SpawnerListener implements Listener {
         // Determine the change amount based on the clicked item's name
         int change = getChangeAmount(displayName);
         if (change == 0) return;
-
-        // Calculate new stack size with overflow handling
-        int targetSize = currentSize + change;
-        int actualChange;
 
         if (change > 0) {
             handleStackIncrease(player, spawner, currentSize, change, maxStackSize);
@@ -455,7 +430,7 @@ public class SpawnerListener implements Listener {
         }
 
         spawner.setStackSize(currentSize + actualChange, player);
-        giveSpawnersWithMergeAndDrop(player, removeAmount);
+        giveSpawnersWithMergeAndDrop(player, removeAmount, spawner.getEntityType());
 
         player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1.0f, 1.0f);
     }
@@ -471,26 +446,143 @@ public class SpawnerListener implements Listener {
         // Lấy số spawner thực tế cần
         int actualChange = Math.min(change, spaceLeft);
 
-        // Kiểm tra xem có đủ spawner không
-        int availableSpawners = countSpawnersInInventory(player);
-        if (availableSpawners < actualChange) {
-            languageManager.sendMessage(player, "messages.not-enough-spawners", "%amountChange%", String.valueOf(actualChange), "%amountAvailable%", String.valueOf(availableSpawners));
+        // Kiểm tra số lượng và type của spawner trong inventory
+        int validSpawners = countValidSpawnersInInventory(player, spawner.getEntityType());
+
+        if (validSpawners == 0 && hasDifferentSpawnerType(player, spawner.getEntityType())) {
+            // Chỉ hiện thông báo different-type khi không có spawner cùng loại nào
+            languageManager.sendMessage(player, "messages.different-type");
             return;
         }
 
-        // Chỉ remove đúng số spawner cần thiết
-        removeSpawnersFromInventory(player, actualChange);
+        if (validSpawners < actualChange) {
+            // Hiện thông báo không đủ spawner khi có ít nhất 1 spawner cùng loại
+            languageManager.sendMessage(player, "messages.not-enough-spawners",
+                    "%amountChange%", String.valueOf(actualChange),
+                    "%amountAvailable%", String.valueOf(validSpawners));
+            return;
+        }
+
+        // Chỉ remove đúng số spawner cần thiết và cùng loại
+        removeValidSpawnersFromInventory(player, spawner.getEntityType(), actualChange);
         spawner.setStackSize(currentSize + actualChange, player);
 
         // Thông báo nếu không thể thêm hết
         if (actualChange < change) {
-            languageManager.sendMessage(player, "messages.stack-full-overflow", "%amount%", String.valueOf(actualChange));
+            languageManager.sendMessage(player, "messages.stack-full-overflow",
+                    "%amount%", String.valueOf(actualChange));
         }
 
         player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1.0f, 1.0f);
     }
 
-    private synchronized void giveSpawnersWithMergeAndDrop(Player player, int amount) {
+    private EntityType getSpawnerEntityType(ItemStack item) {
+        if (item == null || item.getType() != Material.SPAWNER) {
+            return null;
+        }
+
+        ItemMeta meta = item.getItemMeta();
+        if (!(meta instanceof BlockStateMeta)) {
+            return null;
+        }
+
+        BlockStateMeta blockMeta = (BlockStateMeta) meta;
+        CreatureSpawner spawner = (CreatureSpawner) blockMeta.getBlockState();
+        EntityType spawnerEntity = spawner.getSpawnedType();
+
+        // Support for stacking spawners with Spawner from EconomyShopGUI
+        if (spawnerEntity == null) {
+            String displayName = meta.getDisplayName();
+            if (displayName.matches("§9§l[A-Za-z]+(?: [A-Za-z]+)? §rSpawner")) {
+                String entityName = displayName
+                        .replaceAll("§9§l", "")
+                        .replaceAll(" §rSpawner", "")
+                        .replace(" ", "_")
+                        .toUpperCase();
+                try {
+                    spawnerEntity = EntityType.valueOf(entityName);
+                } catch (IllegalArgumentException e) {
+                    configManager.debug("Could not find entity type: " + entityName);
+                }
+            }
+        }
+
+        return spawnerEntity;
+    }
+
+    private boolean hasDifferentSpawnerType(Player player, EntityType requiredType) {
+        for (ItemStack item : player.getInventory().getContents()) {
+            EntityType spawnerEntity = getSpawnerEntityType(item);
+            if (spawnerEntity != null && spawnerEntity != requiredType) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int countValidSpawnersInInventory(Player player, EntityType requiredType) {
+        int count = 0;
+        for (ItemStack item : player.getInventory().getContents()) {
+            EntityType spawnerEntity = getSpawnerEntityType(item);
+            if (spawnerEntity == requiredType) {
+                count += item.getAmount();
+            }
+        }
+        return count;
+    }
+
+    private void removeValidSpawnersFromInventory(Player player, EntityType requiredType, int amountToRemove) {
+        int remainingToRemove = amountToRemove;
+
+        ItemStack[] contents = player.getInventory().getContents();
+        for (int i = 0; i < contents.length && remainingToRemove > 0; i++) {
+            ItemStack item = contents[i];
+            EntityType spawnerEntity = getSpawnerEntityType(item);
+
+            if (spawnerEntity == requiredType) {
+                int itemAmount = item.getAmount();
+                if (itemAmount <= remainingToRemove) {
+                    player.getInventory().setItem(i, null);
+                    remainingToRemove -= itemAmount;
+                } else {
+                    item.setAmount(itemAmount - remainingToRemove);
+                    remainingToRemove = 0;
+                }
+            }
+        }
+        player.updateInventory();
+    }
+
+    private ItemStack createSpawnerItem(EntityType entityType) {
+        ItemStack spawner = new ItemStack(Material.SPAWNER);
+        ItemMeta meta = spawner.getItemMeta();
+
+        if (meta != null) {
+            if (entityType != null && entityType != EntityType.UNKNOWN) {
+                // Set display name
+                String entityTypeName = languageManager.getFormattedMobName(entityType);
+                String displayName = languageManager.getMessage("spawner-name","%entity%",entityTypeName);
+                meta.setDisplayName(displayName);
+
+                // Store entity type in item NBT
+                BlockStateMeta blockMeta = (BlockStateMeta) meta;
+                CreatureSpawner cs = (CreatureSpawner) blockMeta.getBlockState();
+                cs.setSpawnedType(entityType);
+                blockMeta.setBlockState(cs);
+
+                // Add lore
+//                List<String> lore = new ArrayList<>();
+//                lore.add(ChatColor.GRAY + "Entity: " + StringUtils.capitalize(entityName));
+//                meta.setLore(lore);
+
+            }
+            spawner.setItemMeta(meta);
+        }
+
+        return spawner;
+    }
+
+    private synchronized void giveSpawnersWithMergeAndDrop(Player player, int amount, EntityType entityType) {
         ItemStack[] contents = player.getInventory().getContents();
         int remainingAmount = amount;
 
@@ -498,11 +590,21 @@ public class SpawnerListener implements Listener {
         for (int i = 0; i < contents.length && remainingAmount > 0; i++) {
             ItemStack item = contents[i];
             if (item != null && item.getType() == Material.SPAWNER) {
-                int currentAmount = item.getAmount();
-                if (currentAmount < 64) {
-                    int canAdd = Math.min(64 - currentAmount, remainingAmount);
-                    item.setAmount(currentAmount + canAdd);
-                    remainingAmount -= canAdd;
+                // Kiểm tra entity type của spawner trong inventory
+                ItemMeta meta = item.getItemMeta();
+                if (meta instanceof BlockStateMeta) {
+                    BlockStateMeta blockMeta = (BlockStateMeta) meta;
+                    CreatureSpawner spawner = (CreatureSpawner) blockMeta.getBlockState();
+
+                    // Chỉ merge với spawner cùng loại
+                    if (spawner.getSpawnedType() == entityType) {
+                        int currentAmount = item.getAmount();
+                        if (currentAmount < 64) {
+                            int canAdd = Math.min(64 - currentAmount, remainingAmount);
+                            item.setAmount(currentAmount + canAdd);
+                            remainingAmount -= canAdd;
+                        }
+                    }
                 }
             }
         }
@@ -512,7 +614,9 @@ public class SpawnerListener implements Listener {
             Location dropLoc = player.getLocation();
             while (remainingAmount > 0) {
                 int stackSize = Math.min(64, remainingAmount);
-                ItemStack spawnerItem = new ItemStack(Material.SPAWNER, stackSize);
+                // Tạo spawner với đúng entity type
+                ItemStack spawnerItem = createSpawnerItem(entityType);
+                spawnerItem.setAmount(stackSize);
 
                 // Thử thêm vào inventory trước
                 Map<Integer, ItemStack> failed = player.getInventory().addItem(spawnerItem);
@@ -541,32 +645,6 @@ public class SpawnerListener implements Listener {
         else if (displayName.contains("+16")) return 16;
         else if (displayName.contains("+64")) return 64;
         return 0;
-    }
-
-    private synchronized int countSpawnersInInventory(Player player) {
-        return Arrays.stream(player.getInventory().getContents())
-                .filter(item -> item != null && item.getType() == Material.SPAWNER)
-                .mapToInt(ItemStack::getAmount)
-                .sum();
-    }
-
-    private synchronized void removeSpawnersFromInventory(Player player, int amount) {
-        int remaining = amount;
-        ItemStack[] contents = player.getInventory().getContents();
-
-        for (int i = 0; i < contents.length && remaining > 0; i++) {
-            ItemStack item = contents[i];
-            if (item != null && item.getType() == Material.SPAWNER) {
-                int stackAmount = item.getAmount();
-                if (stackAmount <= remaining) {
-                    player.getInventory().setItem(i, null);
-                    remaining -= stackAmount;
-                } else {
-                    item.setAmount(stackAmount - remaining);
-                    remaining = 0;
-                }
-            }
-        }
     }
 
     /**

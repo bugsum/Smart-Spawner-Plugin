@@ -7,6 +7,7 @@ import me.nighter.smartSpawner.managers.ConfigManager;
 import me.nighter.smartSpawner.managers.LanguageManager;
 import org.bukkit.*;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.block.CreatureSpawner;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Item;
@@ -34,12 +35,14 @@ public class SpawnerBreakHandler implements Listener {
     private final ConfigManager configManager;
     private final LanguageManager languageManager;
     private final SpawnerManager spawnerManager;
+    private final HopperHandler hopperHandler;
 
     public SpawnerBreakHandler(SmartSpawner plugin) {
         this.plugin = plugin;
         this.configManager = plugin.getConfigManager();
         this.languageManager = plugin.getLanguageManager();
         this.spawnerManager = plugin.getSpawnerManager();
+        this.hopperHandler = plugin.getHopperHandler();
     }
 
     @EventHandler(priority = EventPriority.HIGH)
@@ -76,6 +79,13 @@ public class SpawnerBreakHandler implements Listener {
         } else {
             handleSpawnerBreak(block, spawner, player);
             event.setCancelled(true);
+        }
+
+        Block blockBelow = event.getBlock().getRelative(BlockFace.DOWN);
+        if (blockBelow.getType() == Material.HOPPER) {
+            if (hopperHandler != null) {
+                hopperHandler.stopHopperTask(blockBelow.getLocation());
+            }
         }
     }
 
@@ -291,43 +301,93 @@ public class SpawnerBreakHandler implements Listener {
 
         // Skip if item doesn't have meta
         ItemMeta meta = item.getItemMeta();
-        if (!(meta instanceof BlockStateMeta)) {
-            return;
-        }
+//        if (!(meta instanceof BlockStateMeta)) {
+//            return;
+//        }
+
 
         BlockStateMeta blockMeta = (BlockStateMeta) meta;
-
-        // Create a new Spawner when placed by a player
-        String newSpawnerId = UUID.randomUUID().toString().substring(0, 8);
-
         // Get the stored spawner state
         CreatureSpawner storedState = (CreatureSpawner) blockMeta.getBlockState();
-        EntityType entityType = storedState.getSpawnedType();
+        EntityType storedEntity = storedState.getSpawnedType();
+
+        // Apply the stored entity type to the placed spawner
         Block placedBlock = event.getBlock();
         CreatureSpawner placedSpawner = (CreatureSpawner) placedBlock.getState();
 
-        if (entityType == null || entityType == EntityType.UNKNOWN) {
-            entityType = configManager.getDefaultEntityType();
+        // Support for spawners without stored meta entity type from EconomyShopGUI
+        if (storedEntity == null) {
+            String displayName = meta.getDisplayName();
+            if (displayName.matches("§9§l[A-Za-z]+(?: [A-Za-z]+)? §rSpawner")) {
+                String entityName = displayName
+                        .replaceAll("§9§l", "")
+                        .replaceAll(" §rSpawner", "")
+                        .replace(" ", "_")
+                        .toUpperCase();
+                configManager.debug("Found entity name: " + entityName);
+                try {
+                    storedEntity = EntityType.valueOf(entityName.toUpperCase());
+                } catch (IllegalArgumentException e) {
+                    configManager.debug("Could not find entity type: " + entityName);
+                    return;
+                }
+            }
+        } else {
+            placedSpawner.setSpawnedType(storedEntity);
+        }
+        // placedSpawner.setSpawnedType(storedEntity);
+        placedSpawner.update();
+
+        // Handle spawner activation
+        if (configManager.getActivateOnPlace()) {
+            createNewSpawnerWithType(block, player, storedEntity);
+        } else {
+            languageManager.sendMessage(player, "messages.entity-spawner-placed");
         }
 
-        placedSpawner.setSpawnedType(entityType);
-        placedSpawner.update();
-        Location location = placedBlock.getLocation();
-        location.getWorld().spawnParticle(
-                Particle.WITCH,
-                location.clone().add(0.5, 0.5, 0.5),
-                50, 0.5, 0.5, 0.5, 0
-        );
+        if (configManager.isHopperEnabled()) {
+            // Check for hopper below and start hopper task
+            Block blockBelow = block.getRelative(BlockFace.DOWN);
+            if (blockBelow.getType() == Material.HOPPER) {
+                if (hopperHandler != null) {
+                    hopperHandler.startHopperTask(blockBelow.getLocation(), block.getLocation());
+                }
+            }
+        }
 
-        // Create new spawner
-        SpawnerData spawner = new SpawnerData(newSpawnerId, location, entityType, plugin);
+        // Debug message
+        configManager.debug("Player " + player.getName() + " placed " + storedEntity + " spawner at " + block.getLocation());
+    }
+
+    private void createNewSpawnerWithType(Block block, Player player, EntityType entityType) {
+        String newSpawnerId = UUID.randomUUID().toString().substring(0, 8);
+
+        // Use placed entity type or fall back to default if null
+        EntityType finalEntityType = (entityType != null && entityType != EntityType.UNKNOWN)
+                ? entityType
+                : configManager.getDefaultEntityType();
+
+        // Create new spawner with specific entity type
+        SpawnerData spawner = new SpawnerData(newSpawnerId, block.getLocation(), finalEntityType, plugin);
         spawner.setSpawnerActive(true);
 
+        // Creature spawner block
+        CreatureSpawner cs = (CreatureSpawner) block.getState();
+        cs.setSpawnedType(finalEntityType);
+        cs.update();
+
+        // Add to manager and save
         spawnerManager.addSpawner(newSpawnerId, spawner);
         spawnerManager.saveSpawnerData();
 
+        // Visual effect
+        block.getWorld().spawnParticle(
+                Particle.WITCH,
+                block.getLocation().clone().add(0.5, 0.5, 0.5),
+                50, 0.5, 0.5, 0.5, 0
+        );
+
         languageManager.sendMessage(player, "messages.activated");
-        // Debug message
         configManager.debug("Created new spawner with ID: " + newSpawnerId + " at " + block.getLocation());
     }
 
