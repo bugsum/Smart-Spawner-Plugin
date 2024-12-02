@@ -295,58 +295,61 @@ public class SpawnerBreakHandler implements Listener {
         if (block.getType() != Material.SPAWNER) {
             return;
         }
-
         Player player = event.getPlayer();
         ItemStack item = event.getItemInHand();
-
-        // Skip if item doesn't have meta
         ItemMeta meta = item.getItemMeta();
-//        if (!(meta instanceof BlockStateMeta)) {
-//            return;
-//        }
-
-
         BlockStateMeta blockMeta = (BlockStateMeta) meta;
-        // Get the stored spawner state
+
+        // Get entity type from item meta
         CreatureSpawner storedState = (CreatureSpawner) blockMeta.getBlockState();
-        EntityType storedEntity = storedState.getSpawnedType();
+        EntityType storedEntityType = storedState.getSpawnedType();
 
-        // Apply the stored entity type to the placed spawner
-        Block placedBlock = event.getBlock();
-        CreatureSpawner placedSpawner = (CreatureSpawner) placedBlock.getState();
+        // Get entity type from nbt tag
+        if (storedEntityType == null) {
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                CreatureSpawner placedSpawner = (CreatureSpawner) block.getState();
+                EntityType placedEntityType = placedSpawner.getSpawnedType();
 
-        // Support for spawners without stored meta entity type from EconomyShopGUI
-        if (storedEntity == null) {
-            String displayName = meta.getDisplayName();
-            if (displayName.matches("§9§l[A-Za-z]+(?: [A-Za-z]+)? §rSpawner")) {
-                String entityName = displayName
-                        .replaceAll("§9§l", "")
-                        .replaceAll(" §rSpawner", "")
-                        .replace(" ", "_")
-                        .toUpperCase();
-                configManager.debug("Found entity name: " + entityName);
-                try {
-                    storedEntity = EntityType.valueOf(entityName.toUpperCase());
-                } catch (IllegalArgumentException e) {
-                    configManager.debug("Could not find entity type: " + entityName);
-                    return;
+                // Handle default entity type
+                if ((placedEntityType == null || placedEntityType == EntityType.UNKNOWN)) {
+                    placedEntityType = configManager.getDefaultEntityType();
+                    placedSpawner.setSpawnedType(placedEntityType);
+                    placedSpawner.update();
                 }
+
+                // Handle spawner activation
+                if (configManager.getActivateOnPlace()) {
+                    createNewSpawnerWithType(block, player, placedEntityType);
+                } else {
+                    EntityType finalPlacedEntityType = placedEntityType;
+                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        placedSpawner.setSpawnedType(finalPlacedEntityType);
+                        placedSpawner.update();
+                        languageManager.sendMessage(player, "messages.entity-spawner-placed");
+                    }, 2L);
+                }
+            }, 2L);
+        } else {
+            // Handle spawner activation with item meta entity type
+            if (configManager.getActivateOnPlace()) {
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    CreatureSpawner placedSpawner = (CreatureSpawner) block.getState();
+                    placedSpawner.setSpawnedType(storedEntityType);
+                    placedSpawner.update();
+                    createNewSpawnerWithType(block, player, storedEntityType);
+                }, 2L);
+            } else {
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    CreatureSpawner placedSpawner = (CreatureSpawner) block.getState();
+                    placedSpawner.setSpawnedType(storedEntityType);
+                    placedSpawner.update();
+                    languageManager.sendMessage(player, "messages.entity-spawner-placed");
+                }, 2L);
             }
-        } else {
-            placedSpawner.setSpawnedType(storedEntity);
-        }
-        // placedSpawner.setSpawnedType(storedEntity);
-        placedSpawner.update();
-
-        // Handle spawner activation
-        if (configManager.getActivateOnPlace()) {
-            createNewSpawnerWithType(block, player, storedEntity);
-        } else {
-            languageManager.sendMessage(player, "messages.entity-spawner-placed");
         }
 
+        // Check for hopper below and start hopper task
         if (configManager.isHopperEnabled()) {
-            // Check for hopper below and start hopper task
             Block blockBelow = block.getRelative(BlockFace.DOWN);
             if (blockBelow.getType() == Material.HOPPER) {
                 if (hopperHandler != null) {
@@ -356,25 +359,15 @@ public class SpawnerBreakHandler implements Listener {
         }
 
         // Debug message
-        configManager.debug("Player " + player.getName() + " placed " + storedEntity + " spawner at " + block.getLocation());
+        configManager.debug("Player " + player.getName() + " placed " + storedEntityType + " spawner at " + block.getLocation());
     }
 
     private void createNewSpawnerWithType(Block block, Player player, EntityType entityType) {
         String newSpawnerId = UUID.randomUUID().toString().substring(0, 8);
 
-        // Use placed entity type or fall back to default if null
-        EntityType finalEntityType = (entityType != null && entityType != EntityType.UNKNOWN)
-                ? entityType
-                : configManager.getDefaultEntityType();
-
         // Create new spawner with specific entity type
-        SpawnerData spawner = new SpawnerData(newSpawnerId, block.getLocation(), finalEntityType, plugin);
+        SpawnerData spawner = new SpawnerData(newSpawnerId, block.getLocation(), entityType, plugin);
         spawner.setSpawnerActive(true);
-
-        // Creature spawner block
-        CreatureSpawner cs = (CreatureSpawner) block.getState();
-        cs.setSpawnedType(finalEntityType);
-        cs.update();
 
         // Add to manager and save
         spawnerManager.addSpawner(newSpawnerId, spawner);

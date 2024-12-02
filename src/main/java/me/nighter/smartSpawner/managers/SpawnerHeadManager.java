@@ -45,6 +45,7 @@ public class SpawnerHeadManager {
         TEXTURE_MAP.put(EntityType.RAVAGER, "cd20bf52ec390a0799299184fc678bf84cf732bb1bd78fd1c4b441858f0235a8");
         TEXTURE_MAP.put(EntityType.SALMON, "d4d001589b86c22cf24f1618fe7efef12932aa9148b5e4fc6ff4a614b990ae12");
         TEXTURE_MAP.put(EntityType.SHEEP, "a723893df4cfb9c7240fc47b560ccf6ddeb19da9183d33083f2c71f46dad290a");
+        TEXTURE_MAP.put(EntityType.SILVERFISH, "bfe13237e1109cab7264dc53b0aa697cf9a7c62c984a269fb0755a288912bbca");
         TEXTURE_MAP.put(EntityType.SHULKER, "537a294f6b7b4ba437e5cb35fb20f46792e7ac0a490a66132a557124ec5f997a");
         TEXTURE_MAP.put(EntityType.SPIDER, "e5871c22b81c12e67f5aebd9afe0958b81cada6305c07599a07b01ab126ba2c4");
         TEXTURE_MAP.put(EntityType.SQUID, "d8705624daa2956aa45956c81bab5f4fdb2c74a596051e24192039aea3a8b8");
@@ -123,6 +124,54 @@ public class SpawnerHeadManager {
             return new ItemStack(Material.SPAWNER);
         }
     }
+
+    public static ItemStack getCustomHead(EntityType entityType) {
+        switch (entityType) {
+            case ZOMBIE:
+                return new ItemStack(Material.ZOMBIE_HEAD);
+            case SKELETON:
+                return new ItemStack(Material.SKELETON_SKULL);
+            case WITHER_SKELETON:
+                return new ItemStack(Material.WITHER_SKELETON_SKULL);
+            case CREEPER:
+                return new ItemStack(Material.CREEPER_HEAD);
+            case PIGLIN, PIGLIN_BRUTE:
+                return new ItemStack(Material.PIGLIN_HEAD);
+        }
+
+        if (HEAD_CACHE.containsKey(entityType)) {
+            return HEAD_CACHE.get(entityType).clone();
+        }
+
+        if (!TEXTURE_MAP.containsKey(entityType)) {
+            return new ItemStack(Material.SPAWNER);
+        }
+
+        ItemStack head = new ItemStack(Material.PLAYER_HEAD);
+        SkullMeta meta = (SkullMeta) head.getItemMeta();
+
+        try {
+            String texture = TEXTURE_MAP.get(entityType);
+
+            PlayerProfile profile = Bukkit.createPlayerProfile(UUID.randomUUID());
+            PlayerTextures textures = profile.getTextures();
+            URL url = new URL("http://textures.minecraft.net/texture/" + texture);
+            textures.setSkin(url);
+            profile.setTextures(textures);
+            meta.setOwnerProfile(profile);
+
+            head.setItemMeta(meta);
+
+            // Cache the head
+            HEAD_CACHE.put(entityType, head.clone());
+
+            return head;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return new ItemStack(Material.SPAWNER);
+        }
+    }
+
     // Phương thức để xóa cache nếu cần
     public static void clearCache() {
         HEAD_CACHE.clear();

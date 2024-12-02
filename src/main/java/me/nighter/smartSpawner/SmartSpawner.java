@@ -1,7 +1,5 @@
 package me.nighter.smartSpawner;
 
-import me.nighter.smartSpawner.commands.GiveSpawnerCommand;
-import me.nighter.smartSpawner.commands.ReloadCommand;
 import me.nighter.smartSpawner.commands.SmartSpawnerCommand;
 import me.nighter.smartSpawner.listeners.*;
 import me.nighter.smartSpawner.managers.*;
@@ -161,16 +159,8 @@ public class SmartSpawner extends JavaPlugin {
         return languageManager;
     }
 
-    public SpawnerManager getSpawnerManage() {
-        return spawnerManager;
-    }
-
     public SpawnerLootGenerator getLootGenerator() {
         return lootGenerator;
-    }
-
-    public SpawnerGuiListener getSpawnerGuiListener() {
-        return spawnerGuiListener;
     }
 
     public SpawnerLootManager getLootManager() {
@@ -185,18 +175,8 @@ public class SmartSpawner extends JavaPlugin {
         return rangeChecker;
     }
 
-    public UpdateChecker getUpdateChecker() {
-        return updateChecker;
-    }
-
     public SpawnerStackHandler getSpawnerStackHandler() {
         return spawnerStackHandler;
-    }
-
-    public void checkUpdate() {
-        if (updateChecker.hasUpdate()) {
-            getLogger().info("New version available: " + updateChecker.getLatestVersion());
-        }
     }
 
     public HopperHandler getHopperHandler() {

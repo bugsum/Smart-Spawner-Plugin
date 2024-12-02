@@ -31,7 +31,7 @@ mob_names:
   HUSK: "Quái Khô Tàn"
   IRON_GOLEM: "Người Sắt"
   MAGMA_CUBE: "Khối Dung Nham"
-  MOOSHROOM: "Mooshroom"
+  MOOSHROOM: "Bò Nấm"
   PIG: "Lợn"
   PIGLIN: "Piglin"
   PIGLIN_BRUTE: "Piglin Hung Bạo"
@@ -42,6 +42,7 @@ mob_names:
   SALMON: "Cá Hồi"
   SHEEP: "Cừu"
   SHULKER: "Shulker"
+  SILVERFISH: "Cá Bạc"
   SKELETON: "Bộ Xương"
   SLIME: "Quái Vật Chất Nhờn"
   SPIDER: "Nhện"
@@ -112,6 +113,12 @@ messages:
   #---------------------------------------------------
   sell-all:
     message: "&#d6e7edBạn đã bán tổng cộng &#3287A9%amount% vật phẩm&#d6e7ed với giá &a%price%$&#d6e7ed!"
+    prefix: true
+    type: CHAT
+    sound: block.note_block.bell
+
+  sell-all-tax:
+    message: "&#d6e7edBạn đã bán tổng cộng &#3287A9%amount% vật phẩm&#d6e7ed với giá &a%price%$&#d6e7ed (Thuế: &c%tax%%&#d6e7ed)!"
     prefix: true
     type: CHAT
     sound: block.note_block.bell
@@ -245,6 +252,21 @@ messages:
     type: CHAT
     sound: block.note_block.chime
 
+  #---------------------------------------------------
+  # Tin nhắn khi dịch chuyển bằng lệnh /ss list
+  #---------------------------------------------------
+  teleported:
+    message: "&aDịch chuyển thành công đến &6Spawner #%spawnerId%"
+    prefix: true
+    type: CHAT
+    sound: entity.enderman.teleport
+
+  not-found:
+    message: "&cKhông thể dịch chuyển đến Spawner đó! Spawner không tồn tại."
+    prefix: true
+    type: CHAT
+    sound: block.note_block.pling
+
 #---------------------------------------------------
 # Tiêu đề giao diện
 #---------------------------------------------------
@@ -366,12 +388,60 @@ equipment-toggle:
       &7Trạng thái: &c&lChặn
 
 #---------------------------------------------------
+# Giao diện danh sách Spawner (Lệnh)
+#---------------------------------------------------
+spawner-list:
+  gui-title:
+    world-selection: "&#3287A9&lDanh sách Spawner"
+    spawner-list: "&#4fc3f7✧ Spawners thế giới %world% &#4fc3f7✧ &7Trang %page%/%total%"
+    page-title: "{world} &r- [{current}/{total}]"
+
+  world-buttons:
+    overworld:
+      name: "&a&lOverworld"
+      lore: |
+        &8▪ &7Tổng số spawner: &a{total}
+        
+        &a➜ &7Nhấn để xem các spawner ở Overworld
+    nether:
+      name: "&c&lNether"
+      lore: |
+        &8▪ &7Tổng số spawner: &c{total}
+        
+        &c➜ &7Nhấn để xem các spawner ở Nether
+    end:
+      name: "&5&lThe End"
+      lore: |
+        &8▪ &7Tổng số spawner: &5{total}
+        
+        &5➜ &7Nhấn để xem các spawner ở The End
+
+  spawner-item:
+    name: "&#4fc3f7&lSpawner #{id}"
+    id_pattern: "Spawner #([A-Za-z0-9]+)"    # Mẫu để khớp ID spawner cho việc dịch chuyển
+    lore:
+      separator: "&8&m------------------------"
+      location: "&8▪ &7Vị trí: &f{x}, {y}, {z}"
+      entity: "&8▪ &7Thực thể: &f{entity}"
+      stack_size: "&8▪ &7Kích thước stack: &6{size}"
+      status:
+        active: "&8▪ &7Trạng thái: &a&lHOẠT ĐỘNG"
+        inactive: "&8▪ &7Trạng thái: &c&lKHÔNG HOẠT ĐỘNG"
+      teleport: "&#3287A9➜ &eNhấn để dịch chuyển"
+
+  navigation:
+    previous-page: "&e&lTrang trước"
+    next-page: "&e&lTrang sau"
+    back: "&c&lQuay lại lựa chọn thế giới"
+
+#---------------------------------------------------
 # Thông báo lệnh
 #---------------------------------------------------
 command:
   usage: |
     &aLệnh SmartSpawner:
     &f/ss reload &7- Tải lại cấu hình plugin
+    &f/ss list &7- Xem danh sách spawner (dành cho admin)
     &f/ss give <người chơi> <loại mob> <số lượng> &7- Tặng spawner cho người chơi
   reload:
     usage: "&cSử dụng: /smartspawner reload"
@@ -392,7 +462,7 @@ no-permission:
   message: "&cBạn không có quyền thực hiện điều này!"
   prefix: true
   type: CHAT
-  sound: villager.no
+  sound: block.note_block.pling
 
 update:
   title: "[Smart Spawner] Có Phiên Bản Mới!"

@@ -1,6 +1,9 @@
 package me.nighter.smartSpawner.listeners;
 
 import me.nighter.smartSpawner.*;
+import me.nighter.smartSpawner.commands.SpawnerListCommand;
+import me.nighter.smartSpawner.holders.PagedSpawnerLootHolder;
+import me.nighter.smartSpawner.holders.SpawnerMenuHolder;
 import me.nighter.smartSpawner.managers.*;
 import me.nighter.smartSpawner.utils.*;
 import org.bukkit.*;
@@ -20,11 +23,13 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.*;
 import org.bukkit.inventory.meta.BlockStateMeta;
 import org.bukkit.inventory.meta.ItemMeta;
-import me.nighter.smartSpawner.utils.SpawnerStackerHolder;
+import me.nighter.smartSpawner.holders.SpawnerStackerHolder;
 import org.geysermc.floodgate.api.FloodgateApi;
 
 import java.util.UUID;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class SpawnerListener implements Listener {
     private final SmartSpawner plugin;
@@ -32,6 +37,12 @@ public class SpawnerListener implements Listener {
     private final LanguageManager languageManager;
     private final SpawnerManager spawnerManager;
     private final SpawnerStackHandler stackHandler;
+    private final SpawnerListCommand listCommand;
+    private static final Set<Material> SPAWNER_MATERIALS = EnumSet.of(
+            Material.PLAYER_HEAD, Material.SPAWNER, Material.ZOMBIE_HEAD,
+            Material.SKELETON_SKULL, Material.WITHER_SKELETON_SKULL,
+            Material.CREEPER_HEAD, Material.PIGLIN_HEAD
+    );
 
     public SpawnerListener(SmartSpawner plugin) {
         this.plugin = plugin;
@@ -39,6 +50,7 @@ public class SpawnerListener implements Listener {
         this.languageManager = plugin.getLanguageManager();
         this.spawnerManager = plugin.getSpawnerManager();
         this.stackHandler = plugin.getSpawnerStackHandler();
+        this.listCommand = new SpawnerListCommand(plugin);
     }
 
     /**
@@ -86,20 +98,6 @@ public class SpawnerListener implements Listener {
         return spawner;
     }
 
-    // Helper method to handle null entity type
-    private void handleNullEntityType(SpawnerData spawner, Block block, Player player) {
-        EntityType defaultType = configManager.getDefaultEntityType();
-        spawner.setEntityType(defaultType);
-
-        CreatureSpawner creatureSpawner = (CreatureSpawner) block.getState();
-        creatureSpawner.setSpawnedType(defaultType);
-        creatureSpawner.update();
-
-        spawnerManager.saveSpawnerData();
-        languageManager.sendMessage(player, "messages.activate_default",
-                "%type%", languageManager.getFormattedMobName(defaultType));
-    }
-
     @EventHandler
     public void onSpawnerClick(PlayerInteractEvent event) {
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
@@ -124,7 +122,7 @@ public class SpawnerListener implements Listener {
                 return;
             }
         }
-//        configManager.debug(isBedrockPlayer(player) ? "Bedrock player detected" : "Java player detected");
+        //configManager.debug(isBedrockPlayer(player) ? "Bedrock player detected" : "Java player detected");
 
         event.setCancelled(true);
         // Direct O(1) lookup instead of iteration
@@ -133,11 +131,16 @@ public class SpawnerListener implements Listener {
         // Handle new spawner creation if it doesn't exist
         if (spawner == null) {
             spawner = createNewSpawner(block, player);
-            if (spawner == null) return; // Creation failed
         } else {
             // Handle existing spawner with null entityType
             if (spawner.getEntityType() == null) {
-                handleNullEntityType(spawner, block, player);
+                CreatureSpawner cs = (CreatureSpawner) block.getState();
+                EntityType entityType = cs.getSpawnedType();
+                if (entityType == null || entityType == EntityType.UNKNOWN) {
+                    entityType = configManager.getDefaultEntityType();
+                }
+                spawner.setEntityType(entityType);
+                spawnerManager.saveSingleSpawner(spawner.getSpawnerId());
             }
         }
 
@@ -154,9 +157,7 @@ public class SpawnerListener implements Listener {
                 boolean success = stackHandler.handleSpawnerStack(player, spawner, itemInHand, true);
                 if (success) {
                     spawnerManager.saveSingleSpawner(spawner.getSpawnerId());
-                    // Play stack sound
                     player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1.0f, 1.0f);
-                    // Show particles
                     block.getWorld().spawnParticle(Particle.HAPPY_VILLAGER,
                             block.getLocation().add(0.5, 0.5, 0.5),
                             10, 0.3, 0.3, 0.3, 0);
@@ -277,8 +278,8 @@ public class SpawnerListener implements Listener {
                 break;
 
             case PLAYER_HEAD, SPAWNER, ZOMBIE_HEAD, SKELETON_SKULL, WITHER_SKELETON_SKULL, CREEPER_HEAD, PIGLIN_HEAD:
-                player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1.0f, 1.0f);
                 handleSpawnerInfoClick(player, spawner);
+                player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1.0f, 1.0f);
                 break;
             case EXPERIENCE_BOTTLE:
                 handleExpBottleClick(player, spawner);
@@ -391,6 +392,8 @@ public class SpawnerListener implements Listener {
         // Return to main menu if spawner is clicked
         if (clicked.getType() == Material.SPAWNER) {
             openSpawnerMenu(player, spawner, true);
+            player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK
+                    , 1.0f, 1.0f);
             return;
         }
 
@@ -788,6 +791,88 @@ public class SpawnerListener implements Listener {
 
         if (player.getGameMode() == GameMode.SURVIVAL) {
             spawnEgg.setAmount(spawnEgg.getAmount() - 1);
+        }
+    }
+
+    @EventHandler
+    public void onWorldSelectionClick(InventoryClickEvent event) {
+        if (!(event.getInventory().getHolder() instanceof SpawnerListCommand.WorldSelectionHolder)) return;
+        if (!(event.getWhoClicked() instanceof Player player)) return;
+
+        if (!player.hasPermission("smartspawner.list")) {
+            languageManager.sendMessage(player, "no-permission");
+            return;
+        }
+        event.setCancelled(true);
+        if (event.getCurrentItem() == null) return;
+        switch (event.getSlot()) {
+            case 11 -> listCommand.openSpawnerListGUI(player, "world", 1);
+            case 13 -> listCommand.openSpawnerListGUI(player, "world_nether", 1);
+            case 15 -> listCommand.openSpawnerListGUI(player, "world_the_end", 1);
+        }
+    }
+
+    @EventHandler
+    public void onSpawnerListClick(InventoryClickEvent event) {
+        if (!(event.getInventory().getHolder() instanceof SpawnerListCommand.SpawnerListHolder holder)) return;
+        if (!(event.getWhoClicked() instanceof Player player)) return;
+
+        if (!player.hasPermission("smartspawner.list")) {
+            languageManager.sendMessage(player, "no-permission");
+            return;
+        }
+        event.setCancelled(true);
+        if (event.getCurrentItem() == null) return;
+
+        // Navigation handling
+        if (event.getSlot() == 45 && holder.getCurrentPage() > 1) {
+            listCommand.openSpawnerListGUI(player, holder.getWorldName(), holder.getCurrentPage() - 1);
+        } else if (event.getSlot() == 53 && holder.getCurrentPage() < holder.getTotalPages()) {
+            listCommand.openSpawnerListGUI(player, holder.getWorldName(), holder.getCurrentPage() + 1);
+        }
+        // Back button
+        else if (event.getSlot() == 49) {
+            listCommand.openWorldSelectionGUI(player);
+        }
+        // Spawner click handling
+        else if (SPAWNER_MATERIALS.contains(event.getCurrentItem().getType())) {
+            handleSpawnerClick(event);
+        }
+    }
+
+    private void handleSpawnerClick(InventoryClickEvent event) {
+        ItemStack clickedItem = event.getCurrentItem();
+        if (clickedItem == null || !clickedItem.hasItemMeta()) return;
+
+        String displayName = clickedItem.getItemMeta().getDisplayName();
+        if (displayName == null) return;
+
+        // Extract spawner ID from display name, now handling alphanumeric IDs
+        String patternString = languageManager.getMessage("spawner-list.spawner-item.id_pattern");
+        configManager.debug("Pattern string: " + patternString);
+        Pattern pattern = Pattern.compile(patternString);
+        configManager.debug("Pattern: " + pattern);
+        Matcher matcher = pattern.matcher(ChatColor.stripColor(displayName));
+        configManager.debug("Matcher: " + ChatColor.stripColor(displayName));
+
+        if (matcher.find()) {
+            String spawnerId = matcher.group(1);
+            configManager.debug("Clicked spawner ID: " + spawnerId);
+            SpawnerData spawner = spawnerManager.getSpawnerById(spawnerId);
+
+            if (spawner != null) {
+                Player player = (Player) event.getWhoClicked();
+                Location loc = spawner.getSpawnerLocation();
+                player.teleport(loc);
+                languageManager.sendMessage(player, "messages.teleported",
+                        "%spawnerId%", spawnerId);
+            } else {
+                Player player = (Player) event.getWhoClicked();
+                languageManager.sendMessage(player, "messages.not-found");
+            }
+        } else {
+            Player player = (Player) event.getWhoClicked();
+            languageManager.sendMessage(player, "messages.not-found");
         }
     }
 }
